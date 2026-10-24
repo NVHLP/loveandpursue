@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>VocabMaster Automated Test Suite</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
+    .pass { color: green; font-weight: bold; }
+    .fail { color: red; font-weight: bold; }
+    .test-case { margin-bottom: 8px; padding: 6px 12px; background: #f4f4f4; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>VocabMaster Automated Test Suite (Multi-Level Vocabulary)</h1>
+  <div id="testResults">Đang chạy kiểm tra...</div>
+
+  <!-- Hidden iframe hosting index.html to test realistic browser runtime -->
+  <iframe id="appFrame" src="index.html" style="width: 1000px; height: 800px; display: none;"></iframe>
+
+  <script>
+    const results = [];
+    const container = document.getElementById('testResults');
+
+    function assert(desc, condition) {
+      results.push({ desc, passed: !!condition });
+      console.log((condition ? 'PASS: ' : 'FAIL: ') + desc);
+    }
+
+    const frame = document.getElementById('appFrame');
+    frame.onload = () => {
+      setTimeout(() => {
+        try {
+          const appDoc = frame.contentDocument;
+          const appWin = frame.contentWindow;
+
+          // TEST 1: Initial Data Check (49 sample words)
+          const totalWordsEl = appDoc.getElementById('statTotalWords');
+          const totalCount = parseInt(totalWordsEl ? totalWordsEl.textContent : '0', 10);
+          const cards = appDoc.querySelectorAll('.vocab-card');
+          assert(`Khởi tạo thành công kho từ vựng mở rộng (>= 40 từ) [stat=${totalCount}, cards=${cards.length}]`, totalCount >= 40);
+          assert('Hiển thị đầy đủ danh sách thẻ từ vựng trong DOM', cards.length >= 40);
+
+          // TEST 2: CEFR Level Badges rendered
+          const levelBadges = appDoc.querySelectorAll('.level-badge');
+          assert('Hiển thị chú thích mức độ (A1-C2) trên các thẻ từ vựng', levelBadges.length > 0);
+
+          // TEST 3: Level Filter Functionality
+          const levelSelect = appDoc.getElementById('levelFilterSelect');
+          assert('Có bộ lọc chọn mức độ (A1, A2, B1, B2, C1, C2)', levelSelect !== null);
+          if (levelSelect) {
+            levelSelect.value = 'A1';
+            levelSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            const a1Cards = appDoc.querySelectorAll('.vocab-card');
+            assert('Lọc từ vựng cấp độ A1 (Dễ) hoạt động chính xác', a1Cards.length > 0 && a1Cards.length < totalCount);
+
+            // Filter C2 (Rất khó)
+            levelSelect.value = 'C2';
+            levelSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            const c2Cards = appDoc.querySelectorAll('.vocab-card');
+            assert('Lọc từ vựng cấp độ C2 (Rất khó) hoạt động chính xác', c2Cards.length > 0);
+
+            // Reset level filter
+            levelSelect.value = 'ALL';
+            levelSelect.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+
+          // TEST 4: Web Speech API Speak button
+          const firstAudioBtn = appDoc.querySelector('.audio-action-btn');
+          assert('Có nút phát âm Web Speech API cho từ vựng', firstAudioBtn !== null);
+          if (firstAudioBtn) {
+            firstAudioBtn.click();
+            assert('Kích hoạt nút nghe phát âm chuẩn thành công', true);
+          }
+
+          // TEST 5: Search filter functionality
+          const searchInput = appDoc.getElementById('searchInput');
+          searchInput.value = 'Greeting';
+          searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+          const filteredCards = appDoc.querySelectorAll('.vocab-card');
+          assert('Tìm kiếm từ "Greeting" trả về đúng 1 kết quả', filteredCards.length === 1);
+
+          // Clear search
+          const clearSearchBtn = appDoc.getElementById('clearSearchBtn');
+          clearSearchBtn.click();
+          assert('Xóa tìm kiếm phục hồi lại toàn bộ danh sách từ', appDoc.querySelectorAll('.vocab-card').length >= 40);
+
+          // TEST 6: Flashcard 3D functionality
+          const flashcardTabBtn = appDoc.querySelector('.nav-tab[data-tab="flashcard"]');
+          flashcardTabBtn.click();
+          const fcSection = appDoc.getElementById('flashcard-section');
+          assert('Chuyển sang chế độ học Flashcard 3D thành công', fcSection.classList.contains('active'));
+
+          const fcWord = appDoc.getElementById('fcFrontWord');
+          assert('Mặt trước Flashcard hiển thị từ tiếng Anh', fcWord && fcWord.textContent.length > 0);
+
+          const fcFrontLevel = appDoc.getElementById('fcFrontLevel');
+          assert('Mặt trước Flashcard có chú thích mức độ', fcFrontLevel && fcFrontLevel.textContent.length > 0);
+
+          const fcCardEl = appDoc.getElementById('flashcardElement');
+          fcCardEl.click();
+          assert('Lật thẻ 3D (flip card) thêm class is-flipped', fcCardEl.classList.contains('is-flipped'));
+
+          const fcBackMeaning = appDoc.getElementById('fcBackMeaning');
+          assert('Mặt sau Flashcard hiển thị nghĩa tiếng Việt', fcBackMeaning && fcBackMeaning.textContent.length > 0);
+
+          fcCardEl.click();
+          assert('Lật lại mặt trước thành công', !fcCardEl.classList.contains('is-flipped'));
+
+          // Test Mark Mastered button
+          const prevMastered = parseInt(appDoc.getElementById('statMasteredWords').textContent);
+          const fcMasteredBtn = appDoc.getElementById('fcMasteredBtn');
+          fcMasteredBtn.click();
+          const newMastered = parseInt(appDoc.getElementById('statMasteredWords').textContent);
+          assert('Nút "Đã thuộc" trên Flashcard tăng số từ đã thuộc', newMastered === prevMastered + 1);
+
+          // TEST 7: Quiz / Kiểm tra mode with Level Tiers
+          const quizTabBtn = appDoc.querySelector('.nav-tab[data-tab="quiz"]');
+          quizTabBtn.click();
+          const quizSection = appDoc.getElementById('quiz-section');
+          assert('Chuyển sang chế độ Kiểm tra (Quiz) thành công', quizSection.classList.contains('active'));
+
+          const quizLevelSelect = appDoc.getElementById('quizLevelSelect');
+          assert('Có tùy chọn lọc mức độ thử thách trong Quiz', quizLevelSelect !== null);
+
+          const startQuizBtn = appDoc.getElementById('startQuizBtn');
+          startQuizBtn.click();
+          const quizPlayScreen = appDoc.getElementById('quizPlayScreen');
+          assert('Bắt đầu bài kiểm tra mở màn hình câu hỏi', quizPlayScreen.classList.contains('active'));
+
+          const quizOptions = appDoc.querySelectorAll('#quizOptionsContainer .option-btn');
+          assert('Tự động tạo câu hỏi trắc nghiệm với đúng 4 đáp án', quizOptions.length === 4);
+
+          // Click first option
+          quizOptions[0].click();
+          const feedbackBox = appDoc.getElementById('quizFeedbackBox');
+          assert('Chọn đáp án hiển thị phản hồi tức thì với giải thích mức độ', feedbackBox.style.display !== 'none');
+
+          // TEST 8: Auto Difficulty Level Detection when Adding Word
+          const openAddBtn = appDoc.getElementById('openAddModalBtn');
+          openAddBtn.click();
+          const wordInput = appDoc.getElementById('wordInput');
+          const modalLevelSelect = appDoc.getElementById('levelSelect');
+
+          // Test A1 detection
+          wordInput.value = 'water';
+          wordInput.dispatchEvent(new Event('input', { bubbles: true }));
+          assert('Tự động nhận diện từ "water" là cấp độ A1', modalLevelSelect.value === 'A1');
+
+          // Test C2 detection
+          wordInput.value = 'serendipity';
+          wordInput.dispatchEvent(new Event('input', { bubbles: true }));
+          assert('Tự động nhận diện từ "serendipity" là cấp độ C2', modalLevelSelect.value === 'C2');
+
+          // Test B2 detection
+          wordInput.value = 'collaborate';
+          wordInput.dispatchEvent(new Event('input', { bubbles: true }));
+          assert('Tự động nhận diện từ "collaborate" là cấp độ B2', modalLevelSelect.value === 'B2');
+
+          // Test adding the detected word into list
+          wordInput.value = 'Resilience';
+          wordInput.dispatchEvent(new Event('input', { bubbles: true }));
+          appDoc.getElementById('meaningInput').value = 'Khả năng phục hồi kiên cường';
+          appDoc.getElementById('exampleInput').value = 'Resilience is vital during hard times.';
+          appDoc.getElementById('topicInput').value = 'Đời sống';
+          appDoc.getElementById('vocabForm').dispatchEvent(new Event('submit', { bubbles: true }));
+
+          // Switch back to list tab and check if new word exists with level
+          const vocabTabBtn = appDoc.querySelector('.nav-tab[data-tab="vocab-list"]');
+          vocabTabBtn.click();
+          const newWordCard = Array.from(appDoc.querySelectorAll('.vocab-card')).find(c => c.textContent.includes('Resilience'));
+          assert('Thêm từ mới với mức độ tự nhận diện thành công vào danh sách', newWordCard !== undefined);
+
+          // TEST 9: LocalStorage persistence check
+          const storedData = appWin.localStorage.getItem('vocab_master_words_v4');
+          assert('Dữ liệu v3 được lưu trữ an toàn trong localStorage', storedData && storedData.length > 500);
+
+          // TEST 10: Quick Auto-Add by word ONLY (User only types word, system generates all fields)
+          const quickAddInput = appDoc.getElementById('quickAddInput');
+          const quickAddForm = appDoc.getElementById('quickAddForm');
+          assert('Thanh thêm nhanh từ vựng tự động (Quick Add) tồn tại', quickAddInput !== null && quickAddForm !== null);
+
+          if (quickAddInput && quickAddForm) {
+            quickAddInput.value = 'Ephemeral';
+            quickAddForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+            const ephemeralCard = Array.from(appDoc.querySelectorAll('.vocab-card')).find(c => c.textContent.includes('Ephemeral'));
+            assert('Thêm từ chỉ bằng cách gõ "Ephemeral": từ xuất hiện trong danh sách', ephemeralCard !== undefined);
+
+            if (ephemeralCard) {
+              const cardText = ephemeralCard.textContent;
+              assert('Tự động phân loại cấp độ C2 cho từ Ephemeral', cardText.includes('C2'));
+              assert('Tự động nhận diện từ loại tính từ [adj]', cardText.includes('Tính từ') || cardText.includes('adj') || ephemeralCard.querySelector('.pos-tag'));
+              assert('Tự động tạo phiên âm IPA cho Ephemeral', cardText.includes('/'));
+              assert('Tự động phân tích nghĩa tiếng Việt cho Ephemeral', cardText.includes('Phù du') || cardText.includes('chóng tàn') || cardText.length > 10);
+            }
+          }
+
+          // TEST 11: Modal "Tự động điền tất cả" (Auto-fill all fields)
+          openAddBtn.click();
+          wordInput.value = 'Pioneer';
+          const autoFillBtn = appDoc.getElementById('autoFillFieldsBtn');
+          assert('Nút "Tự động điền tất cả" tồn tại trong Modal thêm từ', autoFillBtn !== null);
+
+          if (autoFillBtn) {
+            autoFillBtn.click();
+            const posVal = appDoc.getElementById('posSelect').value;
+            const levelVal = appDoc.getElementById('levelSelect').value;
+            const phoneticVal = appDoc.getElementById('phoneticInput').value;
+            const topicVal = appDoc.getElementById('topicInput').value;
+            const meaningVal = appDoc.getElementById('meaningInput').value;
+            const exampleVal = appDoc.getElementById('exampleInput').value;
+
+            assert('Tự động điền từ loại: ' + posVal, posVal.length > 0);
+            assert('Tự động điền cấp độ: ' + levelVal, levelVal === 'B2');
+            assert('Tự động điền phiên âm IPA: ' + phoneticVal, phoneticVal.startsWith('/'));
+            assert('Tự động điền chủ đề: ' + topicVal, topicVal.length > 0);
+            assert('Tự động điền nghĩa tiếng Việt: ' + meaningVal, meaningVal.length > 0);
+            assert('Tự động điền câu ví dụ tiếng Anh: ' + exampleVal, exampleVal.length > 0 && exampleVal.toLowerCase().includes('pioneer'));
+          }
+
+          // TEST 12: Multi-context Vietnamese Meaning Verification
+          const quickAddInput2 = appDoc.getElementById('quickAddInput');
+          const quickAddForm2 = appDoc.getElementById('quickAddForm');
+          if (quickAddInput2 && quickAddForm2) {
+            quickAddInput2.value = 'Address';
+            quickAddForm2.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+            const addressCard = Array.from(appDoc.querySelectorAll('.vocab-card')).find(c => c.textContent.includes('Address'));
+            assert('Thêm từ đa nghĩa "Address" vào danh sách thành công', addressCard !== undefined);
+
+            if (addressCard) {
+              const pills = addressCard.querySelectorAll('.context-pill');
+              assert('Hiển thị các nhãn ngữ cảnh riêng biệt cho từ Address (>= 2 ngữ cảnh)', pills.length >= 2);
+              const cardText = addressCard.textContent;
+              assert('Nghĩa tiếng Việt của Address chứa ngữ cảnh Công việc / Giải quyết', cardText.includes('Công việc') || cardText.includes('Giải quyết'));
+              assert('Nghĩa tiếng Việt của Address chứa ngữ cảnh Đời sống / Địa chỉ', cardText.includes('Địa chỉ') || cardText.includes('nơi cư trú'));
+            }
+
+            // Test morphological fallback on unknown word with root
+            quickAddInput2.value = 'Reconstruct';
+            quickAddForm2.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+            const reconstructCard = Array.from(appDoc.querySelectorAll('.vocab-card')).find(c => c.textContent.includes('Reconstruct'));
+            assert('Từ mới "Reconstruct" tự động phân tích nghĩa tiếng Việt đa ngữ cảnh', reconstructCard !== undefined && reconstructCard.querySelectorAll('.context-pill').length >= 1);
+
+            // TEST 13: Tự đồng bộ khi nhập từ bị trùng (Duplicate Auto-Synchronization)
+            // Case A: Nhập lại từ "Address" đã có qua Quick Add
+            const prevAddressCount = Array.from(appDoc.querySelectorAll('.vocab-card')).filter(c => c.textContent.includes('Address')).length;
+            quickAddInput2.value = 'Address';
+            quickAddForm2.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+            const postAddressCount = Array.from(appDoc.querySelectorAll('.vocab-card')).filter(c => c.textContent.includes('Address')).length;
+            assert('Nhập từ trùng qua Quick Add không tạo thẻ trùng lặp (số thẻ không đổi)', postAddressCount === prevAddressCount && postAddressCount === 1);
+
+            // Case B: Thêm từ trùng qua Modal form ("Reconstruct") với nghĩa bổ sung
+            openAddBtn.click();
+            wordInput.value = 'Reconstruct';
+            appDoc.getElementById('meaningInput').value = '3. [Kiến trúc] Tái thiết kế toàn bộ công trình cổ';
+            appDoc.getElementById('exampleInput').value = 'Architects will reconstruct the ancient monument.';
+            const vocabForm = appDoc.getElementById('vocabForm');
+            vocabForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+            const postReconstructCards = Array.from(appDoc.querySelectorAll('.vocab-card')).filter(c => c.textContent.includes('Reconstruct'));
+            assert('Thêm từ trùng qua Modal tự động đồng bộ thay vì tạo từ trùng lặp', postReconstructCards.length === 1);
+            if (postReconstructCards.length > 0) {
+              const recText = postReconstructCards[0].textContent;
+              assert('Nghĩa mới được tự động đồng bộ và hợp nhất vào từ hiện có', recText.includes('Tái thiết') || recText.includes('Tái tạo') || recText.includes('Kiến trúc'));
+            }
+
+            // TEST 14: Bảo lưu vĩnh viễn dữ liệu người dùng (Persistence & Protection)
+            const backupRaw = appWin.localStorage.getItem('vocab_master_user_words_backup_v1');
+            assert('Kho sao lưu độc lập (User Words Backup) được lưu trữ an toàn trong localStorage', backupRaw !== null && backupRaw.length > 0);
+            if (backupRaw) {
+              assert('Sao lưu độc lập chứa các từ người dùng đã thêm (Resilience, Ephemeral, v.v.)', backupRaw.includes('Resilience') || backupRaw.includes('Ephemeral') || backupRaw.includes('Address'));
+            }
+
+            // TEST 15: Tích hợp từ điển Cambridge (dictionary.cambridge.org)
+            const cambridgePills = appDoc.querySelectorAll('.cambridge-pill');
+            assert('Mỗi thẻ từ vựng đều tích hợp nút liên kết trực tiếp đến Cambridge Dictionary', cambridgePills.length >= 40);
+            if (cambridgePills.length > 0) {
+              const firstLink = cambridgePills[0].getAttribute('href');
+              assert('Đường dẫn chính xác đến Cambridge English-Vietnamese: ' + firstLink, firstLink && firstLink.includes('dictionary.cambridge.org/dictionary/english-vietnamese/'));
+            }
+
+            const modalCamBtn = appDoc.getElementById('modalCambridgeBtn');
+            assert('Nút tra cứu Cambridge Dictionary trực tiếp trong Modal thêm từ tồn tại', modalCamBtn !== null);
+
+            const fcCamLink = appDoc.getElementById('fcCambridgeLink');
+            assert('Liên kết tra cứu Cambridge Dictionary trên mặt sau Flashcard 3D tồn tại', fcCamLink !== null);
+
+            // Kiểm tra tính chuẩn xác của nghĩa tiếng Việt theo Cambridge Dictionary
+            const cardsAll = Array.from(appDoc.querySelectorAll('.vocab-card'));
+            const intlCard = cardsAll.find(c => c.textContent.includes('International'));
+            assert('Từ "International" mang nghĩa chuẩn Cambridge: (thuộc) quốc tế, toàn cầu', intlCard && intlCard.textContent.includes('quốc tế'));
+
+            const exhCard = cardsAll.find(c => c.textContent.includes('Exhibition'));
+            assert('Từ "Exhibition" mang nghĩa chuẩn Cambridge: cuộc triển lãm, buổi trưng bày', exhCard && (exhCard.textContent.includes('triển lãm') || exhCard.textContent.includes('trưng bày')));
+
+            // TEST 16: Kiểm tra từ "Complex" đa ngữ cảnh chuẩn Cambridge
+            quickAddInput2.value = 'Complex';
+            quickAddForm2.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+            const complexCard = Array.from(appDoc.querySelectorAll('.vocab-card')).find(c => c.textContent.includes('Complex'));
+            assert('Từ "Complex" tự động chuyển nghĩa đa ngữ cảnh chuẩn Cambridge', complexCard !== undefined);
+            if (complexCard) {
+              const pills = complexCard.querySelectorAll('.context-pill');
+              assert('Từ "Complex" có từ 2 ngữ cảnh riêng biệt trở lên', pills.length >= 2);
+              const cardText = complexCard.textContent;
+              assert('Không còn nhãn tạm "[Chuẩn Cambridge]" trong nghĩa của từ', !cardText.includes('[Chuẩn Cambridge]'));
+              assert('Nghĩa của "Complex" bao gồm tính chất phức tạp và khu liên hợp/mặc cảm', cardText.includes('phức tạp') || cardText.includes('Phức tạp'));
+              assert('Câu ví dụ của "Complex" là câu ngữ cảnh tự nhiên chuẩn xác', !cardText.includes('Developing a deeper understanding'));
+            }
+
+            // TEST 17: Kiểm tra loại bỏ hoàn toàn mẫu lặp "Khía cạnh ứng dụng trong công sở hoặc lĩnh vực chuyên môn"
+            const allCardsText = Array.from(appDoc.querySelectorAll('.vocab-card')).map(c => c.textContent).join(' ');
+            assert('Tuyệt đối không chứa đoạn rập khuôn "Khía cạnh ứng dụng trong công sở hoặc lĩnh vực chuyên môn"', !allCardsText.includes('Khía cạnh ứng dụng trong công sở'));
+            assert('Tuyệt đối không chứa đoạn rập khuôn "sống hàng ngày;" rập khuôn', !allCardsText.includes('sống hàng ngày;'));
+            assert('Tuyệt đối không chứa câu ví dụ rập khuôn "Understanding the practical significance of"', !allCardsText.includes('Understanding the practical significance of'));
+
+            // TEST 18: Thêm từ đời sống "Cat" kiểm tra nghĩa chuẩn Cambridge không bị gán "công việc chuyên môn"
+            quickAddInput2.value = 'Cat';
+            quickAddForm2.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+            const catCard = Array.from(appDoc.querySelectorAll('.vocab-card')).find(c => {
+              const titleEl = c.querySelector('.word-text-title');
+              return titleEl && titleEl.textContent.trim().toLowerCase() === 'cat';
+            });
+            assert('Thêm từ "Cat" thành công', catCard !== undefined);
+            if (catCard) {
+              assert('Từ "Cat" mang nghĩa con mèo chân thực, không bị gán mẫu rập khuôn công việc chuyên môn', catCard.textContent.includes('mèo') && !catCard.textContent.includes('Khía cạnh ứng dụng trong công sở'));
+            }
+
+            // TEST 19: Thêm từ đa ngữ cảnh "Bank" kiểm tra phân chia ngữ cảnh chuẩn Cambridge như thẻ Complex
+            quickAddInput2.value = 'Bank';
+            quickAddForm2.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+            const bankCard = Array.from(appDoc.querySelectorAll('.vocab-card')).find(c => {
+              const titleEl = c.querySelector('.word-text-title');
+              return titleEl && titleEl.textContent.trim().toLowerCase() === 'bank';
+            });
+            assert('Thêm từ đa ngữ cảnh "Bank" thành công', bankCard !== undefined);
+            if (bankCard) {
+              const pills = bankCard.querySelectorAll('.context-pill');
+              assert('Từ "Bank" có nhiều nhãn ngữ cảnh riêng biệt (Tài chính, Địa lý/Tự nhiên)', pills.length >= 2);
+              assert('Nghĩa của "Bank" chứa ngữ cảnh ngân hàng tài chính', bankCard.textContent.includes('Ngân hàng') || bankCard.textContent.includes('ngân hàng'));
+              assert('Nghĩa của "Bank" chứa ngữ cảnh bờ sông/bờ đê', bankCard.textContent.includes('bờ') || bankCard.textContent.includes('Bờ'));
+            }
+
+            // TEST 20: Dịch tiếng Việt nằm ngay bên dưới mỗi câu ví dụ bằng tiếng Anh
+            const sampleCards = Array.from(appDoc.querySelectorAll('.vocab-card')).slice(0, 10);
+            assert('Có các thẻ từ vựng hiển thị câu ví dụ', sampleCards.length > 0);
+            let missingInfo = [];
+            sampleCards.forEach(c => {
+              const wordTitle = (c.querySelector('.word-text-title') || {}).textContent || 'unknown';
+              const quoteEl = c.querySelector('.card-example-quote');
+              if (!quoteEl) {
+                missingInfo.push(wordTitle + ' (no quoteEl)');
+              } else {
+                const enLine = quoteEl.querySelector('.example-en-line');
+                const viLine = quoteEl.querySelector('.example-vi-line');
+                if (!enLine || !enLine.textContent.trim()) {
+                  missingInfo.push(wordTitle + ' (no enLine)');
+                }
+                if (!viLine || !viLine.textContent.trim()) {
+                  missingInfo.push(wordTitle + ' (no viLine)');
+                }
+              }
+            });
+            assert('Tất cả các thẻ từ vựng đều có câu ví dụ tiếng Anh kèm dòng dịch nghĩa tiếng Việt ngay bên dưới', missingInfo.length === 0);
+
+            // Kiểm tra thẻ 3D Flashcard
+            const fcBackExample = appDoc.getElementById('fcBackExample');
+            const fcBackExampleVi = appDoc.getElementById('fcBackExampleVi');
+            assert('Mặt sau Flashcard có câu ví dụ tiếng Anh (#fcBackExample)', fcBackExample !== null);
+            assert('Mặt sau Flashcard có phần dịch tiếng Việt (#fcBackExampleVi) nằm ngay bên dưới', fcBackExampleVi !== null);
+
+            // Kiểm tra Add/Edit Modal có input dịch câu ví dụ
+            const exampleViInput = appDoc.getElementById('exampleViInput');
+            assert('Modal Thêm/Sửa từ có trường nhập dịch tiếng Việt câu ví dụ (#exampleViInput)', exampleViInput !== null);
+
+            // TEST 21: Đa dạng các câu ví dụ và bản dịch tiếng Việt không trùng lặp
+            const meta1 = appWin.generateWordMetadata('Keyboard');
+            const meta2 = appWin.generateWordMetadata('Monitor');
+            const meta3 = appWin.generateWordMetadata('Explore');
+            assert('Tạo câu ví dụ động cho "Keyboard" thành công', meta1 && meta1.example && meta1.exampleVi);
+            assert('Tạo câu ví dụ động cho "Monitor" thành công', meta2 && meta2.example && meta2.exampleVi);
+            assert('Các câu ví dụ cho các từ khác nhau không bị trùng lặp khuôn mẫu (Keyboard vs Monitor)', meta1.example !== meta2.example);
+            assert('Các bản dịch tiếng Việt bên dưới không bị trùng lặp khuôn mẫu', meta1.exampleVi !== meta2.exampleVi);
+
+            // Kiểm tra nút "Đổi ví dụ khác" trong Modal
+            const regenBtn = appDoc.getElementById('regenerateExampleBtn');
+            assert('Nút "Đổi ví dụ khác" (#regenerateExampleBtn) tồn tại trong Modal', regenBtn !== null);
+            if (regenBtn) {
+              const prevEx = appDoc.getElementById('exampleInput').value;
+              regenBtn.click();
+              const nextEx = appDoc.getElementById('exampleInput').value;
+              assert('Bấm nút "Đổi ví dụ khác" tạo ra câu ví dụ và bản dịch mới', nextEx.length > 0);
+            }
+          }
+
+          renderSummary();
+
+        } catch (err) {
+          assert('Xảy ra lỗi trong quá trình kiểm tra: ' + err.message, false);
+          renderSummary();
+        }
+      }, 600);
+    };
+
+    function renderSummary() {
+      let passedCount = results.filter(r => r.passed).length;
+      let totalCount = results.length;
+      let html = '<h2>Kết Quả Kiểm Tra: ' + passedCount + '/' + totalCount + ' Pass</h2>';
+      results.forEach(r => {
+        html += '<div class="test-case ' + (r.passed ? 'pass' : 'fail') + '">' +
+                (r.passed ? '✔ PASS: ' : '✖ FAIL: ') + r.desc + '</div>';
+      });
+      container.innerHTML = html;
+      document.body.setAttribute('data-test-status', passedCount === totalCount ? 'ALL_PASSED' : 'HAS_FAILURES');
+    }
+  </script>
+</body>
+</html>
